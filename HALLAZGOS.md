@@ -1,0 +1,25 @@
+# Hallazgos
+
+## Contrato observado de auth
+
+No existe `docs/ENDPOINTS.md`; este resumen deriva del código y no representa un contrato acordado. `POST /auth/login` consume JSON con `username`, `password` y `client` (`auth/src/main/java/com/bcp/workshop/auth/LoginRequest.java:3-7`, `auth/src/main/java/com/bcp/workshop/auth/AuthResource.java:15-25`). El recurso devuelve 400 si el request es nulo o falta username/password (`AuthResource.java:27-33`), 401 si no encuentra las credenciales (`AuthResource.java:35-37`), y 200 con `token`, `expiresIn`, `user` y `debug` cuando autentica (`AuthResource.java:39-49`). Si ocurre una excepción inesperada, devuelve 500 con mensaje genérico y registra detalle en log (`AuthResource.java:57-59`). Se ejecutó la suite local; ver resultados de H-AUTH-02 y H-AUTH-04 en la matriz y en `PLAN.md`.
+
+## Flujo observado
+
+- `AuthResource.login` valida campos, llama a `LegacyDatabase.findByCredentials` y, si hay usuario, crea el token y arma la respuesta (`auth/src/main/java/com/bcp/workshop/auth/AuthResource.java:24-48`).
+- `LegacyDatabase` usa `AUTH_DB_URL` o `jdbc:sqlite:./data/workshop.db`, crea la tabla, siembra usuarios con hash y migra contraseñas heredadas en texto (`auth/src/main/java/com/bcp/workshop/auth/LegacyDatabase.java:19-85`). El login recupera el registro por username con `PreparedStatement` y verifica la contraseña (`LegacyDatabase.java:89-105`).
+- `LegacyTokenUtil` construye un contenido con usuario, rol, expiración y secreto embebido, y lo codifica en Base64 sin firma (`auth/src/main/java/com/bcp/workshop/auth/LegacyTokenUtil.java:8-15`).
+- `application.properties` habilita CORS y usa el patrón `/.*/` como origen, además de declarar métodos y headers (`auth/src/main/resources/application.properties:4-7`).
+- `auth/pom.xml` declara Quarkus `3.27.4` y Commons Text `1.9`; la presencia de versiones no confirma por sí sola un advisory (`auth/pom.xml:13`, `auth/pom.xml:49-50`).
+
+## Matriz de seguimiento
+
+| id | componente | hallazgo | tipo | explicacion | evidencia (archivo:linea) | severidad | estado |
+|---|---|---|---|---|---|---|---|
+| H-AUTH-01 | auth | Concatenación de credenciales en SQL | Vulnerabilidad | El riesgo original era que la concatenación permitiera alterar el SQL. La búsqueda quedó parametrizada como dependencia de H-AUTH-02; el cierre de este hallazgo se conserva pendiente por el alcance del plan y requiere seguimiento independiente. | auth/src/main/java/com/bcp/workshop/auth/LegacyDatabase.java:25,89-105; auth/src/test/java/com/bcp/workshop/auth/LegacyDatabaseTest.java:49-58 | alta | Pendiente |
+| H-AUTH-02 | auth | Contraseñas almacenadas en texto plano | Vulnerabilidad | **Resuelto:** contraseñas derivadas con PBKDF2-HMAC-SHA256, salt aleatorio y formato versionado; las filas heredadas se migran de forma idempotente y se verifica el hash al autenticar. La prueba confirma que la contraseña no queda almacenada en claro y que el usuario puede seguir entrando. | auth/src/main/java/com/bcp/workshop/auth/PasswordHasher.java:15-49,55-95; auth/src/main/java/com/bcp/workshop/auth/LegacyDatabase.java:51-85,89-105; auth/src/test/java/com/bcp/workshop/auth/LegacyDatabaseTest.java:31-47,61-73 | alta | Resuelto |
+| H-AUTH-03 | auth | Token Base64 sin firma y con secreto embebido | Vulnerabilidad | Base64 solo codifica el contenido; el formato incluye un secreto fijo pero no una firma verificable, por lo que no demuestra integridad ni autenticidad. | auth/src/main/java/com/bcp/workshop/auth/LegacyTokenUtil.java:8,13-15; auth/src/main/java/com/bcp/workshop/auth/AuthResource.java:39-42 | alta | Pendiente |
+| H-AUTH-04 | auth | Respuesta de error expone detalles internos | Vulnerabilidad | **Resuelto:** el cliente conserva el estado 500 y recibe un mensaje genérico; mensaje y stack trace de la excepción quedan solo en el log del servidor. Una prueba verifica que el cuerpo no contiene el centinela ni la clase de excepción. | auth/src/main/java/com/bcp/workshop/auth/AuthResource.java:57-59; auth/src/test/java/com/bcp/workshop/auth/AuthResourceTest.java:94-112 | media | Resuelto |
+| H-AUTH-05 | auth | CORS permite orígenes mediante patrón amplio | Vulnerabilidad | El patrón `/.*/` coincide ampliamente con orígenes; una política permisiva puede permitir que sitios no previstos realicen solicitudes desde navegadores. | auth/src/main/resources/application.properties:4-7 | media | Pendiente |
+| H-AUTH-06 | auth | Resource concentra validación, persistencia, negocio y respuesta | Refactor | `login` valida la entrada, consulta la base, crea el token y serializa la respuesta; el acoplamiento dificulta probar y cambiar cada responsabilidad de forma aislada. | auth/src/main/java/com/bcp/workshop/auth/AuthResource.java:24-58 | baja | Pendiente |
+| H-AUTH-07 | auth | Versiones de dependencias requieren verificación SCA | Vulnerabilidad | Quarkus `3.27.4` y Commons Text `1.9` están declarados como candidatos del reto; con la evidencia local no se confirma CVE ni advisory, así que el riesgo queda por investigar. | auth/pom.xml:13,49-50 | baja | Pendiente |
