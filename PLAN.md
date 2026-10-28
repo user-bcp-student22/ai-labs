@@ -69,7 +69,7 @@ CodeQL y Dependency Review son controles remotos y no se ejecutan en este recorr
 
 Esta selección toma los tres hallazgos `Pendiente` de mayor severidad en `HALLAZGOS.md`: H-AUTH-01 (alta), H-AUTH-03 (alta) y H-AUTH-05 (media). H-AUTH-02 y H-AUTH-04 ya están marcados `Resuelto` y no se reabren aquí. El contrato de `POST /auth/login` se toma de `docs/ENDPOINTS.md` como observado, no acordado; se preservarán método, ruta, estados y estructura JSON, excepto el formato interno del campo `token`, que H-AUTH-03 pide fortalecer explícitamente. No hay tests ejecutados como parte de esta actualización del plan.
 
-## Item: H-AUTH-01 — Concatenación de credenciales en SQL
+## Item: H-AUTH-01 — Concatenación de credenciales en SQL - APROBADO
 
 **Qué item:** `H-AUTH-01`, componente `auth`, estado actual `Pendiente`, severidad alta en `HALLAZGOS.md`.
 
@@ -83,7 +83,7 @@ Esta selección toma los tres hallazgos `Pendiente` de mayor severidad en `HALLA
 
 **Contrato y riesgos:** no cambia el contrato observado de endpoint. El valor de prueba no debe ser un usuario real y la DB debe vivir bajo `auth/target/`; las pruebas actuales tienen un fallback a `auth/data/workshop.db` si falta `AUTH_DB_URL`, por lo que la variable de aislamiento debe fijarse al ejecutarlas.
 
-## Item: H-AUTH-03 — Token Base64 sin firma y con secreto embebido
+## Item: H-AUTH-03 — Token Base64 sin firma y con secreto embebido - APROBADO
 
 **Qué item:** `H-AUTH-03`, componente `auth`, estado actual `Pendiente`, severidad alta en `HALLAZGOS.md`.
 
@@ -97,7 +97,7 @@ Esta selección toma los tres hallazgos `Pendiente` de mayor severidad en `HALLA
 
 **Contrato y riesgos:** ruta, request, status y campos JSON se conservan; el token deja de ser compatible con consumidores que decodifican manualmente el valor Base64. `docs/ENDPOINTS.md` debe actualizar su nota de seguridad durante la implementación, cuando la elección criptográfica y la validación estén comprobadas. La coordinación de consumidores queda pendiente y no autoriza leer o cambiar otros componentes dentro de este plan.
 
-## Item: H-AUTH-05 — CORS permite orígenes mediante patrón amplio
+## Item: H-AUTH-05 — CORS permite orígenes mediante patrón amplio - APROBADO
 
 **Qué item:** `H-AUTH-05`, componente `auth`, estado actual `Pendiente`, severidad media en `HALLAZGOS.md`.
 
