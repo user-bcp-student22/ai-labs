@@ -58,6 +58,24 @@ class AuthResourceTest {
     }
 
     @Test
+    void logsInWithUsernameContainingQuote() throws SQLException {
+        String username = "http-o'brien-test";
+        String password = "Quoted-Http-Password";
+        insertUser(username, passwordHasher.hash(password));
+        try {
+            given()
+                    .contentType("application/json")
+                    .body("{\"username\":\"" + username + "\",\"password\":\"" + password + "\"}")
+                    .when().post("/auth/login")
+                    .then()
+                    .statusCode(200)
+                    .body("user.username", is(username));
+        } finally {
+            deleteUser(username);
+        }
+    }
+
+    @Test
     void rejectsWorkshopUserWithIncorrectPassword() {
         given()
                 .contentType("application/json")
@@ -152,6 +170,29 @@ class AuthResourceTest {
         assertFalse(body.containsKey("exception"));
         assertFalse(body.toString().contains("database-error-sentinel"));
         assertFalse(body.toString().contains(IllegalStateException.class.getName()));
+    }
+
+    private void insertUser(String username, String password) throws SQLException {
+        String databaseUrl = System.getenv().getOrDefault("AUTH_DB_URL", "jdbc:sqlite:./data/workshop.db");
+        try (Connection connection = DriverManager.getConnection(databaseUrl);
+             PreparedStatement statement = connection.prepareStatement(
+                     "INSERT OR REPLACE INTO legacy_users(username,password,display_name,role) VALUES (?,?,?,?)")) {
+            statement.setString(1, username);
+            statement.setString(2, password);
+            statement.setString(3, "Test User");
+            statement.setString(4, "STUDENT");
+            statement.executeUpdate();
+        }
+    }
+
+    private void deleteUser(String username) throws SQLException {
+        String databaseUrl = System.getenv().getOrDefault("AUTH_DB_URL", "jdbc:sqlite:./data/workshop.db");
+        try (Connection connection = DriverManager.getConnection(databaseUrl);
+             PreparedStatement statement = connection.prepareStatement(
+                     "DELETE FROM legacy_users WHERE username=?")) {
+            statement.setString(1, username);
+            statement.executeUpdate();
+        }
     }
 
     private String storedPassword(String username) throws SQLException {
