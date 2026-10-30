@@ -20,6 +20,41 @@ No existe `docs/ENDPOINTS.md`; este resumen deriva del código y no representa u
 | H-AUTH-02 | auth | Contraseñas almacenadas en texto plano | Vulnerabilidad | **Resuelto:** contraseñas derivadas con PBKDF2-HMAC-SHA256, salt aleatorio y formato versionado; las filas heredadas se migran de forma idempotente y se verifica el hash al autenticar. La prueba confirma que la contraseña no queda almacenada en claro y que el usuario puede seguir entrando. | auth/src/main/java/com/bcp/workshop/auth/PasswordHasher.java:15-49,55-95; auth/src/main/java/com/bcp/workshop/auth/LegacyDatabase.java:51-85,89-105; auth/src/test/java/com/bcp/workshop/auth/LegacyDatabaseTest.java:31-47,61-73 | alta | Resuelto |
 | H-AUTH-03 | auth | Token Base64 sin firma y con secreto embebido | Vulnerabilidad | Base64 solo codifica el contenido; el formato incluye un secreto fijo pero no una firma verificable, por lo que no demuestra integridad ni autenticidad. | auth/src/main/java/com/bcp/workshop/auth/LegacyTokenUtil.java:8,13-15; auth/src/main/java/com/bcp/workshop/auth/AuthResource.java:39-42 | alta | Pendiente |
 | H-AUTH-04 | auth | Respuesta de error expone detalles internos | Vulnerabilidad | **Resuelto:** el cliente conserva el estado 500 y recibe un mensaje genérico; mensaje y stack trace de la excepción quedan solo en el log del servidor. Una prueba verifica que el cuerpo no contiene el centinela ni la clase de excepción. | auth/src/main/java/com/bcp/workshop/auth/AuthResource.java:57-59; auth/src/test/java/com/bcp/workshop/auth/AuthResourceTest.java:94-112 | media | Resuelto |
-| H-AUTH-05 | auth | CORS permite orígenes mediante patrón amplio | Vulnerabilidad | El patrón `/.*/` coincide ampliamente con orígenes; una política permisiva puede permitir que sitios no previstos realicen solicitudes desde navegadores. | auth/src/main/resources/application.properties:4-7 | media | Pendiente |
+| H-AUTH-05 | auth | CORS permite orígenes mediante patrón amplio | Vulnerabilidad | El patrón `/.*/` coincide ampliamente con orígenes; una política permisiva puede permitir que sitios no previstos realicen solicitudes desde navegadores. | auth/src/main/resources/application.properties:4-7 | media | Pendiente (issue #25) |
 | H-AUTH-06 | auth | Resource concentra validación, persistencia, negocio y respuesta | Refactor | `login` valida la entrada, consulta la base, crea el token y serializa la respuesta; el acoplamiento dificulta probar y cambiar cada responsabilidad de forma aislada. | auth/src/main/java/com/bcp/workshop/auth/AuthResource.java:24-58 | baja | Pendiente |
 | H-AUTH-07 | auth | Versiones de dependencias requieren verificación SCA | Vulnerabilidad | Quarkus `3.27.4` y Commons Text `1.9` están declarados como candidatos del reto; con la evidencia local no se confirma CVE ni advisory, así que el riesgo queda por investigar. | auth/pom.xml:13,49-50 | baja | Pendiente |
+| H-AUTH-08 | auth | Fallos de base de datos se responden como 401 en lugar de 500 | Vulnerabilidad | `LegacyDatabase.findByCredentials` captura cualquier excepción, la imprime y devuelve `null`; `AuthResource` lo interpreta como credenciales inválidas. Una caída de la base responde 401 y el 500 documentado no se alcanza por esta vía. `initialize()` también silencia errores de arranque. La prueba `hidesExceptionDetailsWhenDatabaseLookupFails` sustituye `findByCredentials`, así que no cubre el camino real. | auth/src/main/java/com/bcp/workshop/auth/LegacyDatabase.java:40-41,102-105; auth/src/main/java/com/bcp/workshop/auth/AuthResource.java:35-37,57-59 | media | Pendiente (issue #24) |
+
+## Revisión local de seguridad: PR #18 (H-WEB-01)
+
+**Enlace al PR:** https://github.com/NTTData-Academy/ai-labs/pull/18  
+**Repositorio:** `NTTData-Academy/ai-labs`  
+**Base:** `main` — `91b73a2ce577695ee397f0262fd1d92061c701c6`  
+**Cabeza:** `dependabot/npm_and_yarn/web/angular/compiler-22.2.3` — `a6bc8bee7cf12afb60b57b77dba46ce68ac00421`  
+**Criterio aplicado:** exclusivamente seguridad.
+
+### Archivos y contexto inspeccionados
+
+- Diff obtenido por GitHub MCP: `web/package.json` y `web/package-lock.json`. El manifiesto cambia `@angular/compiler` de `21.2.19` a `22.2.3` (`web/package.json:13`; `web/package-lock.json:12`). En el lockfile, la entrada del compilador cambia el artefacto resuelto y sus requisitos de Node (hunk del diff `+839`; campo `engines.node` en torno a `+850`). Los demás paquetes Angular del manifiesto permanecen en `21.2.19`.
+- Contexto de cabeza consultado mediante GitHub MCP: `web/angular.json`, `web/src/main.ts`, `web/src/app/app.component.ts`, `web/src/app/app.routes.ts`, `web/src/app/login/login.component.ts` y `web/src/app/dashboard/dashboard.component.ts`. El builder configurado es `application`, producción es la configuración predeterminada de build y no encontré uso explícito de APIs de compilación JIT en los puntos de entrada, rutas o componentes consultados.
+- El commit upstream incluido en la publicación de Angular, [35a02f8](https://github.com/angular/angular/commit/35a02f8097724f4b6e83e1c9c008da8f1fc7f127), describe hardening del JIT contra prototype pollution e inyección de código: filtra nombres de parámetros de funciones generadas, limita la enumeración a propiedades propias y comprueba propiedades propias al identificar referencias.
+
+### Pruebas ejecutadas y resultados
+
+- Se consultaron por GitHub MCP los metadatos, SHAs, archivos, diff y check runs del PR. No se ejecutaron pruebas, instalación, build, `npm audit` ni análisis SCA localmente.
+- Los check runs visibles reportan `dependencies` como `failure`, `web` como `failure` y `analyze (javascript-typescript)` como `cancelled`; `auth` y `api` aparecen como `success`. También aparecen `analyze (java-kotlin)` como `failure` y `analyze (python)` como `cancelled`, fuera del código cambiado. No se obtuvieron los logs, por lo que estos estados no permiten determinar causas ni resultados de seguridad.
+
+### Hallazgos
+
+**No se demostró un defecto de seguridad introducido por el diff.** La versión nueva incorpora el hardening JIT upstream descrito arriba. En el contexto de aplicación inspeccionado no se encontró invocación explícita de compilación dinámica; esto no prueba por sí solo que ninguna configuración externa o ruta no consultada use JIT.
+
+### Riesgos pendientes y comprobaciones reproducibles
+
+- Confirmar qué motivó el fallo del check `dependencies` y el fallo del check `web`, y por qué se canceló `analyze (javascript-typescript)`, consultando los logs del workflow correspondiente al SHA de cabeza.
+- En un checkout limpio de la cabeza, con una versión de Node compatible con `@angular/compiler` del lockfile, ejecutar desde `web`: `npm ci`, `npm test`, `npm run build` y `npm audit --audit-level=moderate`. Registrar por separado cada resultado; estas comprobaciones no se ejecutaron en esta revisión.
+- Para verificar el alcance del hardening, ejecutar las pruebas unitarias JIT de Angular relacionadas con `output_jit`, `output_jit_trusted_types` y `parse_util` en la versión anterior y en la actual, y confirmar que las regresiones incluidas en el commit upstream pasan con `22.2.3`.
+- Verificar en la configuración completa de despliegue que no se habilita compilación JIT ni compilación de plantillas en runtime. Solo se inspeccionó el contexto de aplicación enumerado arriba.
+
+### Conclusión
+
+No se identificaron defectos demostrados. La actualización aporta una corrección de hardening JIT, pero su relevancia en runtime para esta aplicación no quedó confirmada. La revisión no constituye aprobación del PR. No se ejecutaron pruebas locales ni fue posible atribuir las fallas/cancelaciones de CI sin sus logs; esos puntos siguen sin verificar.

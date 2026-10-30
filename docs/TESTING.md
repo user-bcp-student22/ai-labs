@@ -153,6 +153,31 @@ Las pruebas de persistencia/hash adicionales caracterizan migración idempotente
 |---|---|---|---:|---|
 | auth | `GET /q/health`, `POST /auth/login` | PowerShell, `cwd=auth/`, `AUTH_DB_URL=jdbc:sqlite:./target/auth-testing-docs.db`; `mvn -Dtest=AuthResourceTest test` | 0 | 11 tests, 0 fallos, 0 errores. Health respondió 200/UP y `checks=[]`; login válido, errores y bordes de campos pasaron. |
 | auth | Suite completa | PowerShell, `cwd=auth/`, misma `AUTH_DB_URL`; `mvn verify` | 0 | BUILD SUCCESS; 17 tests, 0 fallos, 0 errores. |
+| auth | H-AUTH-03, línea base 1 (1.2) | PowerShell, `cwd=raíz`, `AUTH_DB_URL=jdbc:sqlite:./target/auth-testing.db`; `python tools/lab.py test auth` | 1 | BUILD FAILURE de entorno: `Port already bound: 8081`. El puerto lo ocupa un proceso `node` de mcp-proxy del usuario (PID 16152), que no se detuvo. |
+| auth | H-AUTH-03, línea base 2 (1.2) | Igual que la anterior, más `QUARKUS_HTTP_TEST_PORT=18081`; base SQLite nueva | 1 | Fallo de fixture: `no such table: legacy_users` en `AuthResourceTest.insertUser` (llamado desde `logsInWithUsernameContainingQuote`). La tabla la crea `LegacyDatabase.initialize()` solo al instanciar el bean; la prueba escribe por JDBC antes de que exista. 18 tests, 1 error, 14 omitidos. |
+| auth | H-AUTH-03, línea base 3 (1.2) | Igual, con la base aislada ya creada por la ejecución anterior | 0 | BUILD SUCCESS; 18 tests, 0 fallos, 0 errores (12 `AuthResourceTest`, 3 `LegacyDatabaseTest`, 3 `PasswordHasherTest`). |
+| auth | H-AUTH-03, caracterización 2.1-2.4 | Igual, `QUARKUS_HTTP_TEST_PORT=18081` | 0 | BUILD SUCCESS; 21 tests, 0 fallos, 0 errores (15 `AuthResourceTest`). Pruebas nuevas listadas abajo. |
+| api | H-AUTH-03, setup del entorno | PowerShell, `cwd=raíz`; `python tools/lab.py setup api` | 0 | Creó `api/.venv` con Python 3.13 e instaló `requirements.txt` y `requirements-dev.txt`. |
+| api | H-AUTH-03, caracterización 3.1-3.3 | PowerShell, `cwd=raíz`; `python tools/lab.py test api` | 0 | 6 passed, 0 fallos. Cobertura total 91.96%; compuerta `--cov-fail-under=85` cumplida. No hubo ejecución previa a las pruebas nuevas porque `api/.venv` no existía. |
+| auth | H-AUTH-03, baseline 1.2 previo a refactor | PowerShell, `cwd=raíz`; `openspec validate token-firmado-login --strict`; `AUTH_DB_URL=jdbc:sqlite:./target/auth-testing.db`, `QUARKUS_HTTP_TEST_PORT=18081`; `python tools/lab.py test auth` | 0 | Change valid. BUILD SUCCESS; 21 tests, 0 fallos, 0 errores. Mensaje de error en log de `hidesExceptionDetailsWhenDatabaseLookupFails` es esperado (fallo inyectado). |
+| api | H-AUTH-03, baseline 1.2 previo a refactor | PowerShell, `cwd=raíz`; `python tools/lab.py test api` | 0 | 6 passed, 0 fallos. Cobertura total 92.86%; compuerta 85% cumplida. |
+| auth | H-AUTH-03, refactor 4.1 (LoginService) | PowerShell, `cwd=raíz`; `AUTH_DB_URL=jdbc:sqlite:./target/auth-testing.db`, `QUARKUS_HTTP_TEST_PORT=18081`; `python tools/lab.py test auth` | 0 | BUILD SUCCESS; 21 tests, 0 fallos, 0 errores. Cambio de wiring en `hidesExceptionDetailsWhenDatabaseLookupFails` (usa `LoginService.database`); aserciones sin cambio. |
+| auth | H-AUTH-03, refactor 4.2 (TokenIssuer con Clock, LegacyTokenUtil eliminado) | Igual que 4.1 | 0 | BUILD SUCCESS; 21 tests, 0 fallos, 0 errores. Formato Base64 sin cambio. |
+
+#### Caracterización H-AUTH-03 (pruebas nuevas o completadas)
+
+| prueba | requisito que protege | estado actual |
+|---|---|---|
+| `AuthResourceTest.logsInWithWorkshopUser` (ampliada) | Estructura del login: `expiresIn=3600`, `user.displayName`, `user.role`, `debug=authenticated-with-legacy-flow` | Pasa |
+| `AuthResourceTest.escapesDisplayNameAsHtml4InLoginResponse` | `displayName` escapado en HTML4 (`<`, `&`, `"`) | Pasa |
+| `AuthResourceTest.acceptsLoginWithoutClientFieldCurrentlyReturns200` | Login sin `client` responde 200; cambia a 400 en la tarea 5.6 | Pasa (comportamiento a cambiar) |
+| `AuthResourceTest.rejectsWhitespaceOnlyUsername` | Username con solo espacios responde 400 | Pasa |
+| `AuthResourceTest` (existentes) | Health, 400, 401, 500 | Pasan |
+| `api/tests/test_api.py::test_lists_only_trainer_tasks_for_trainer_token` | Owner por defecto es el usuario del token | Pasa |
+| `api/tests/test_api.py::test_rejects_expired_legacy_token` | Token legacy vencido responde 401 | Pasa |
+| `api/tests/test_api.py::test_rejects_invalid_token` (existente) | Token inválido responde 401 | Pasa |
+
+Hallazgo de fixture (no corregido en esta tarea): `AuthResourceTest.insertUser` depende de que `LegacyDatabase` haya creado la tabla antes. Con una base SQLite nueva, la primera prueba que escribe falla. Requiere revisión antes de tomar la suite como reproducible desde cero.
 
 ### Cobertura
 

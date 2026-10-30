@@ -53,8 +53,66 @@ class AuthResourceTest {
                 .when().post("/auth/login")
                 .then()
                 .statusCode(200)
+                .body("token", notNullValue())
+                .body("expiresIn", is(3600))
                 .body("user.username", is("student"))
-                .body("token", notNullValue());
+                .body("user.displayName", is("Workshop Student"))
+                .body("user.role", is("STUDENT"))
+                .body("debug", is("authenticated-with-legacy-flow"));
+    }
+
+    @Test
+    void escapesDisplayNameAsHtml4InLoginResponse() throws SQLException {
+        String username = "http-html-escape-test";
+        String password = "Html-Escape-Password";
+        insertUser(username, passwordHasher.hash(password), "Ana <b> & \"Q\"", "STUDENT");
+        try {
+            given()
+                    .contentType("application/json")
+                    .body("{\"username\":\"" + username + "\",\"password\":\"" + password + "\",\"client\":\"angular-workshop\"}")
+                    .when().post("/auth/login")
+                    .then()
+                    .statusCode(200)
+                    .body("user.displayName", is("Ana &lt;b&gt; &amp; &quot;Q&quot;"));
+        } finally {
+            deleteUser(username);
+        }
+    }
+
+    @Test
+    void rejectsLoginWithoutClientField() {
+        given()
+                .contentType("application/json")
+                .body("{\"username\":\"student\",\"password\":\"Workshop123!\"}")
+                .when().post("/auth/login")
+                .then()
+                .statusCode(400)
+                .body("message", is("Client is not allowed"))
+                .body(not(containsString("token")));
+    }
+
+    @Test
+    void rejectsLoginWithBlankClient() {
+        given()
+                .contentType("application/json")
+                .body("{\"username\":\"student\",\"password\":\"Workshop123!\",\"client\":\"   \"}")
+                .when().post("/auth/login")
+                .then()
+                .statusCode(400)
+                .body("message", is("Client is not allowed"))
+                .body(not(containsString("token")));
+    }
+
+    @Test
+    void rejectsLoginWithClientOutsideAllowlist() {
+        given()
+                .contentType("application/json")
+                .body("{\"username\":\"student\",\"password\":\"Workshop123!\",\"client\":\"unknown-client\"}")
+                .when().post("/auth/login")
+                .then()
+                .statusCode(400)
+                .body("message", is("Client is not allowed"))
+                .body(not(containsString("token")));
     }
 
     @Test
@@ -65,7 +123,7 @@ class AuthResourceTest {
         try {
             given()
                     .contentType("application/json")
-                    .body("{\"username\":\"" + username + "\",\"password\":\"" + password + "\"}")
+                    .body("{\"username\":\"" + username + "\",\"password\":\"" + password + "\",\"client\":\"angular-workshop\"}")
                     .when().post("/auth/login")
                     .then()
                     .statusCode(200)
@@ -79,7 +137,7 @@ class AuthResourceTest {
     void rejectsWorkshopUserWithIncorrectPassword() {
         given()
                 .contentType("application/json")
-                .body("{\"username\":\"student\",\"password\":\"Incorrect-Test-Password\"}")
+                .body("{\"username\":\"student\",\"password\":\"Incorrect-Test-Password\",\"client\":\"angular-workshop\"}")
                 .when().post("/auth/login")
                 .then()
                 .statusCode(401)
@@ -143,6 +201,17 @@ class AuthResourceTest {
     }
 
     @Test
+    void rejectsWhitespaceOnlyUsername() {
+        given()
+                .contentType("application/json")
+                .body("{\"username\":\"   \",\"password\":\"Test-Only-Password\"}")
+                .when().post("/auth/login")
+                .then()
+                .statusCode(400)
+                .body("message", is("Username is required"));
+    }
+
+    @Test
     void storesWorkshopPasswordAsVersionedHash() throws SQLException {
         String storedPassword = storedPassword("student");
         assertNotEquals("Workshop123!", storedPassword);
@@ -152,15 +221,19 @@ class AuthResourceTest {
     @Test
     void hidesExceptionDetailsWhenDatabaseLookupFails() {
         AuthResource resource = new AuthResource();
-        resource.database = new LegacyDatabase() {
+        LoginService service = new LoginService();
+        service.allowedClient = "angular-workshop";
+        service.database = new LegacyDatabase() {
             @Override
             public UserRecord findByCredentials(String username, String password) {
                 throw new IllegalStateException("database-error-sentinel");
             }
         };
+        resource.loginService = service;
         LoginRequest request = new LoginRequest();
         request.username = "student";
         request.password = "Test-Only-Password";
+        request.client = "angular-workshop";
 
         Response response = resource.login(request);
 
@@ -173,14 +246,18 @@ class AuthResourceTest {
     }
 
     private void insertUser(String username, String password) throws SQLException {
+        insertUser(username, password, "Test User", "STUDENT");
+    }
+
+    private void insertUser(String username, String password, String displayName, String role) throws SQLException {
         String databaseUrl = System.getenv().getOrDefault("AUTH_DB_URL", "jdbc:sqlite:./data/workshop.db");
         try (Connection connection = DriverManager.getConnection(databaseUrl);
              PreparedStatement statement = connection.prepareStatement(
                      "INSERT OR REPLACE INTO legacy_users(username,password,display_name,role) VALUES (?,?,?,?)")) {
             statement.setString(1, username);
             statement.setString(2, password);
-            statement.setString(3, "Test User");
-            statement.setString(4, "STUDENT");
+            statement.setString(3, displayName);
+            statement.setString(4, role);
             statement.executeUpdate();
         }
     }
