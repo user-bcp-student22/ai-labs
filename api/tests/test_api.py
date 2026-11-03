@@ -1,19 +1,13 @@
-import base64
-import time
 from pathlib import Path
 
 from fastapi.testclient import TestClient
 
 from app.main import create_app
-
-
-def token(username: str = "student", role: str = "STUDENT") -> str:
-    raw = f"{username}|{role}|{int(time.time()) + 3600}|WORKSHOP_SECRET_2026"
-    return base64.b64encode(raw.encode()).decode()
+from tests.support import bearer
 
 
 def headers(username: str = "student", role: str = "STUDENT") -> dict[str, str]:
-    return {"Authorization": f"Bearer {token(username, role)}"}
+    return bearer(username=username, role=role)
 
 
 def test_lists_seeded_tasks(tmp_path: Path) -> None:
@@ -48,11 +42,11 @@ def test_uploads_requirement(tmp_path: Path) -> None:
             files={"file": ("requirements.txt", b"Login must be accessible", "text/plain")},
         )
     assert response.status_code == 201
-    assert (upload_dir / "requirements.txt").exists()
+    assert Path(response.json()["storedAt"]).exists()
 
 
 def test_rejects_invalid_token(tmp_path: Path) -> None:
     app = create_app(str(tmp_path / "workshop.db"), str(tmp_path / "uploads"))
     with TestClient(app) as client:
-        response = client.get("/api/tasks", headers={"Authorization": "Bearer invalid"})
+        response = client.get("/api/tasks", headers={"Authorization": "Bearer not-a-token"})
     assert response.status_code == 401
