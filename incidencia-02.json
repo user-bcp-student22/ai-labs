@@ -1,0 +1,33 @@
+{
+  "case_id": "caso-02",
+  "service": "acceso",
+  "error_code": "AUTH_DEPENDENCY_UNAVAILABLE",
+  "correlation_id": "LOGIN-DEMO-201",
+  "first_seen": "2026-11-03T15:00:01Z",
+  "last_seen": "2026-11-03T15:00:04Z",
+  "occurrences": 2,
+  "priority": "P2",
+  "summary": "La dependencia de identidad devolvió HTTP 503 durante un intento de acceso.",
+  "impact": "El intento de acceso asociado a LOGIN-DEMO-201 recibió una respuesta 503; el log no permite determinar si el inicio de sesión se completó posteriormente.",
+  "evidence": [
+    {
+      "file": "caso-02-acceso.jsonl",
+      "line": 1,
+      "text": "{\"timestamp\":\"2026-11-03T10:00:00-05:00\",\"level\":\"INFO\",\"service\":\"acceso\",\"correlation_id\":\"LOGIN-DEMO-201\",\"event_id\":\"evt-201\",\"message\":\"Inicio de autenticacion\",\"user\":\"[REDACTADO]\"}"
+    },
+    {
+      "file": "caso-02-acceso.jsonl",
+      "line": 2,
+      "text": "{\"timestamp\":\"2026-11-03T10:00:01-05:00\",\"level\":\"ERROR\",\"service\":\"acceso\",\"correlation_id\":\"LOGIN-DEMO-201\",\"event_id\":\"evt-202\",\"code\":\"AUTH_DEPENDENCY_UNAVAILABLE\",\"http_status\":503,\"dependency\":\"identidad-demo\",\"password\":\"[REDACTADO]\"}"
+    },
+    {
+      "file": "caso-02-acceso.jsonl",
+      "line": 4,
+      "text": "{\"timestamp\":\"2026-11-03T10:00:04-05:00\",\"level\":\"ERROR\",\"service\":\"acceso\",\"correlation_id\":\"LOGIN-DEMO-201\",\"event_id\":\"evt-203\",\"code\":\"AUTH_DEPENDENCY_UNAVAILABLE\",\"http_status\":503,\"dependency\":\"identidad-demo\",\"token\":\"[REDACTADO]\"}"
+    }
+  ],
+  "missing_data": [
+    "Causa de la indisponibilidad y resultado final del intento de acceso."
+  ],
+  "recommended_action": "Revisar con el equipo responsable la respuesta de la dependencia identidad-demo y confirmar el resultado de LOGIN-DEMO-201, sin asumir que hubo un rechazo de credenciales."
+}
