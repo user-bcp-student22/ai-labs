@@ -1,0 +1,5 @@
+schema: spec-driven
+created: 2026-11-04
+goal: "Address GitHub Issue #23: prevent authentication bypass through SQL
+  injection in auth login while preserving the documented login success
+  contract."
